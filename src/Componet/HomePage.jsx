@@ -7,7 +7,24 @@ function HomePage() {
   const handleGetStarted = () => {
     navigate("/home"); // Navigate to the "/home" route
   };
-
+  const mapsLoading = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const googleMapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+          window.open(googleMapsUrl, "_blank"); // Open in new tab
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          alert("Failed to retrieve location. Please enable GPS.");
+        }
+      );
+    } else {
+      alert("Geolocation is not supported by this browser.");
+    }
+  };
+  
   return (
     <div
       style={{
@@ -47,8 +64,28 @@ function HomePage() {
         onMouseOver={(e) => (e.target.style.background = "#f0f0f0")}
         onMouseOut={(e) => (e.target.style.background = "white")}
       >
-        Get Started
+        Go
       </button>
+      <br />
+      <button
+            onClick={mapsLoading}
+            style={{
+                padding: "1rem 2rem",
+                fontSize: "1.25rem",
+                fontWeight: "bold",
+                color: "white",
+                background: "green",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+            }}
+            onMouseOver={(e) => (e.target.style.background = "#f0f0f0")}
+            onMouseOut={(e) => (e.target.style.background = "green")}
+            >
+            Find On Maps
+            </button>
+
     </div>
   );
 }

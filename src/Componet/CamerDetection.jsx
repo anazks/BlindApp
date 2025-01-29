@@ -1,7 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 import "@tensorflow/tfjs";
-import { BrowserRouter as Router, Route } from "react-router-dom";
+
+const FOCAL_LENGTH = 500; // Adjust based on your camera
+const KNOWN_WIDTHS = {
+  person: 0.5, // Approximate average width of a person in meters
+  car: 1.8, // Average width of a car in meters
+  bottle: 0.07, // Approximate width of a bottle in meters
+};
 
 const App = () => {
   const videoRef = useRef(null);
@@ -11,18 +17,37 @@ const App = () => {
   // Initialize the video stream
   useEffect(() => {
     const loadCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play();
-          };
+        try {
+          // Check if the browser supports mediaDevices
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("Camera access is not supported on this device.");
+            return;
+          }
+      
+          // Request camera permission
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.onloadedmetadata = () => {
+              videoRef.current.play();
+            };
+          }
+        } catch (error) {
+          console.error("Error accessing webcam:", error);
+      
+          // Handle permission denied
+          if (error.name === "NotAllowedError") {
+            alert(
+              "Camera access is required! Please allow camera permissions in your device settings."
+            );
+          } else if (error.name === "NotFoundError") {
+            alert("No camera device found. Please connect a camera.");
+          } else {
+            alert("An unexpected error occurred. Please try again.");
+          }
         }
-      } catch (error) {
-        console.error("Error accessing webcam:", error);
-      }
-    };
+      };
 
     loadCamera();
   }, []);
@@ -40,8 +65,9 @@ const App = () => {
           videoRef.current.videoWidth > 0 &&
           videoRef.current.videoHeight > 0
         ) {
-          drawPredictions(await model.detect(videoRef.current));
-          speakPredictions(await model.detect(videoRef.current));
+          const predictions = await model.detect(videoRef.current);
+          drawPredictions(predictions);
+          speakPredictions(predictions);
         }
         requestAnimationFrame(detect);
       };
@@ -56,6 +82,14 @@ const App = () => {
 
     detectObjects();
   }, []);
+
+  // Estimate distance of objects
+  const estimateDistance = (objectClass, bboxWidth) => {
+    if (KNOWN_WIDTHS[objectClass]) {
+      return (KNOWN_WIDTHS[objectClass] * FOCAL_LENGTH) / bboxWidth;
+    }
+    return null; // Unknown object
+  };
 
   // Draw predictions on canvas
   const drawPredictions = (predictions) => {
@@ -76,16 +110,21 @@ const App = () => {
 
     predictions.forEach((prediction) => {
       const [x, y, width, height] = prediction.bbox;
+      const distance = estimateDistance(prediction.class, width);
+      
       context.strokeStyle = "#00FF00";
       context.lineWidth = 2;
       context.strokeRect(x, y, width, height);
       context.fillStyle = "#00FF00";
       context.font = "16px Arial";
-      context.fillText(
-        `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
-        x,
-        y > 10 ? y - 5 : 10
-      );
+
+      // Display object name and distance
+      let displayText = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
+      if (distance) {
+        displayText += ` - ${distance.toFixed(2)}m`;
+      }
+
+      context.fillText(displayText, x, y > 10 ? y - 5 : 10);
     });
   };
 
@@ -94,18 +133,24 @@ const App = () => {
     if (isSpeaking || predictions.length === 0) return;
 
     const utterance = new SpeechSynthesisUtterance();
-    utterance.text = predictions.map((p) => p.class).join(", ");
+    utterance.text = predictions
+      .map((p) => {
+        const distance = estimateDistance(p.class, p.bbox[2]);
+        return distance
+          ? `${p.class} at approximately ${distance.toFixed(2)} meters`
+          : p.class;
+      })
+      .join(", ");
+    
     utterance.lang = "en-US";
-
     setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
-
     window.speechSynthesis.speak(utterance);
   };
 
   return (
-    <div style={{ textAlign: "center" }}>
-      <h1>Object Detection with TTS</h1>
+    <div style={{ textAlign: "center", background: "linear-gradient(to right, #4CAF50, #81C784)", }}>
+      <h1>Starting Virtual Assistant</h1>
       <video
         ref={videoRef}
         style={{
