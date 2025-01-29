@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 import "@tensorflow/tfjs";
-import { Link } from "react-router-dom";
+import { BrowserRouter as Router, Route } from "react-router-dom";
 
-const CameraDetection = () => {
+const App = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -11,32 +11,47 @@ const CameraDetection = () => {
   // Initialize the video stream
   useEffect(() => {
     const loadCamera = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
-      videoRef.current.srcObject = stream;
-      videoRef.current.play();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current.play();
+          };
+        }
+      } catch (error) {
+        console.error("Error accessing webcam:", error);
+      }
     };
 
     loadCamera();
   }, []);
 
-  // Load the COCO-SSD model and start detection
+  // Load the COCO-SSD model and start detection when video is ready
   useEffect(() => {
     const detectObjects = async () => {
       const model = await cocoSsd.load();
       console.log("Model loaded");
 
       const detect = async () => {
-        if (videoRef.current) {
-          const predictions = await model.detect(videoRef.current);
-          drawPredictions(predictions);
-          speakPredictions(predictions);
+        if (
+          videoRef.current &&
+          videoRef.current.readyState === 4 && // Ensure video is fully loaded
+          videoRef.current.videoWidth > 0 &&
+          videoRef.current.videoHeight > 0
+        ) {
+          drawPredictions(await model.detect(videoRef.current));
+          speakPredictions(await model.detect(videoRef.current));
         }
         requestAnimationFrame(detect);
       };
 
-      detect();
+      if (videoRef.current) {
+        videoRef.current.onloadeddata = () => {
+          console.log("Video loaded, starting detection...");
+          detect();
+        };
+      }
     };
 
     detectObjects();
@@ -48,8 +63,14 @@ const CameraDetection = () => {
     const context = canvas.getContext("2d");
     const video = videoRef.current;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Ensure the video has dimensions before setting canvas size
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    } else {
+      canvas.width = 640; // Default width
+      canvas.height = 480; // Default height
+    }
 
     context.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -68,23 +89,12 @@ const CameraDetection = () => {
     });
   };
 
-  // Estimate distance based on object height in image
-  const estimateDistance = (bboxHeight, actualHeight = 1.7) => {
-    const focalLength = 500; // Example focal length in pixels
-    return (actualHeight * focalLength) / bboxHeight; // Returns distance in meters
-  };
-
-  // Speak detected objects with their estimated distances
+  // Speak detected objects
   const speakPredictions = (predictions) => {
     if (isSpeaking || predictions.length === 0) return;
 
     const utterance = new SpeechSynthesisUtterance();
-    utterance.text = predictions
-      .map((p) => {
-        const distance = estimateDistance(p.bbox[3]); // Using height of bounding box
-        return `${p.class} is approximately ${distance.toFixed(2)} meters away.`;
-      })
-      .join(", ");
+    utterance.text = predictions.map((p) => p.class).join(", ");
     utterance.lang = "en-US";
 
     setIsSpeaking(true);
@@ -93,118 +103,32 @@ const CameraDetection = () => {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Function to open Google Maps with a destination and speak it
-  const openGoogleMaps = () => {
-    const destination = "1600 Amphitheatre Parkway, Mountain View, CA"; // Example destination
-    const mapUrl = `https://www.google.com/maps?q=${encodeURIComponent(destination)}`;
-
-    // Speak the destination
-    const utterance = new SpeechSynthesisUtterance();
-    utterance.text = `Opening Google Maps for ${destination}`;
-    utterance.lang = "en-US";
-    window.speechSynthesis.speak(utterance);
-
-    // Open Google Maps in a new window
-    window.open(mapUrl, "_blank");
-  };
-
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        background: "linear-gradient(to right, #4CAF50, #81C784)",
-        color: "white",
-        height: "100vh",
-        overflow: "hidden",
-      }}
-    >
-      {/* Navbar */}
-      <nav
+    <div style={{ textAlign: "center" }}>
+      <h1>Object Detection with TTS</h1>
+      <video
+        ref={videoRef}
         style={{
-          width: "100%",
-          padding: "1rem",
-          backgroundColor: "#388E3C",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: "bold" }}>
-          VisionAid
-        </h2>
-        <div>
-          <Link
-            to="/"
-            style={{
-              textDecoration: "none",
-              color: "white",
-              fontWeight: "bold",
-              marginLeft: "1rem",
-            }}
-          >
-            Home
-          </Link>
-        </div>
-      </nav>
-
-      {/* Detection Area */}
-      <div
-        style={{
-          position: "relative",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          zIndex: 1,
           width: "100%",
           height: "100%",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
+          objectFit: "cover",
         }}
-      >
-        <video
-          ref={videoRef}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            zIndex: 1,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
-        />
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            zIndex: 2,
-          }}
-        />
-      </div>
-
-      {/* Google Maps Button */}
-      <button
-        onClick={openGoogleMaps}
+      />
+      <canvas
+        ref={canvasRef}
         style={{
-          padding: "1rem 2rem",
-          fontSize: "1.25rem",
-          fontWeight: "bold",
-          color: "#4CAF50",
-          background: "white",
-          border: "none",
-          borderRadius: "8px",
-          cursor: "pointer",
-          marginTop: "20px",
-          transition: "all 0.3s ease",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          zIndex: 2,
         }}
-        onMouseOver={(e) => (e.target.style.background = "#f0f0f0")}
-        onMouseOut={(e) => (e.target.style.background = "white")}
-      >
-        Open Google Maps
-      </button>
+      />
     </div>
   );
 };
 
-export default CameraDetection;
+export default App;
