@@ -8,15 +8,15 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "My React Vite PWA",
-        short_name: "MyApp",
-        description: "A React PWA using Vite",
+        name: "My VisionAid",
+        short_name: "VisionAid",
+        description: "A VisionAid app fro Blinds",
         theme_color: "#ffffff",
         background_color: "#ffffff",
         display: "standalone",
         icons: [
           {
-            src: "/icon-192x192.png",
+            src: "https://cdn0.iconfinder.com/data/icons/people-lifestyle/100/Blind-01-512.png",
             sizes: "192x192",
             type: "image/png",
           },
